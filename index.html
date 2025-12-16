@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI LaTeX Studio (Doraemon Edition)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    
+    <style>
+        /* --- GIAO DIỆN MỚI --- */
+        :root {
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            /* Thay đổi background thành ảnh Doraemon */
+            /* --bg-gradient: linear-gradient(135deg, #e0e7ff 0%, #f3f4f6 100%); XÓA DÒNG CŨ */
+            --card-bg: rgba(255, 255, 255, 0.95); /* Nền thẻ trắng mờ để nhìn rõ chữ trên nền ảnh */
+            --text-main: #1f2937;
+            --text-sub: #6b7280;
+            --border: #e5e7eb;
+        }
+
+        body { 
+            font-family: 'Inter', sans-serif; 
+            /* CẤU HÌNH ẢNH NỀN DORAEMON */
+            background: url('images.png') no-repeat center center fixed; 
+            background-size: cover; /* Ảnh phủ kín màn hình */
+            margin: 0; padding: 40px 20px; color: var(--text-main); min-height: 100vh; 
+        }
+        
+        .container { 
+            max-width: 1000px; margin: 0 auto; background: var(--card-bg); 
+            border-radius: 24px; box-shadow: 0 20px 40px -10px rgba(0,0,0,0.2); overflow: hidden; 
+            border: 1px solid rgba(255,255,255,0.8);
+            backdrop-filter: blur(10px); /* Hiệu ứng mờ kính cực đẹp */
+        }
+        
+        /* HEADER */
+        .header { 
+            background: rgba(255,255,255,0.8); padding: 25px 40px; border-bottom: 1px solid var(--border);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .brand { font-size: 1.5em; font-weight: 800; color: var(--primary); display: flex; align-items: center; gap: 12px; letter-spacing: -0.5px; }
+        
+        /* NÚT HƯỚNG DẪN MÀU XANH BIỂN */
+        .help-pill { 
+            background: #2563eb; /* Màu xanh biển đậm */
+            color: white; /* Chữ trắng */
+            padding: 8px 20px; 
+            border-radius: 99px; font-weight: 600; cursor: pointer; transition: 0.2s; border: none;
+            box-shadow: 0 4px 6px rgba(37, 99, 235, 0.3);
+        }
+        .help-pill:hover { background: #1d4ed8; transform: translateY(-2px); }
+
+        /* UPLOAD SECTION */
+        .upload-section { padding: 40px; }
+        
+        .upload-box { 
+            border: 2px dashed #c7d2fe; background: #eef2ff; border-radius: 16px; padding: 50px; 
+            text-align: center; cursor: pointer; transition: 0.3s;
+        }
+        .upload-box:hover { border-color: var(--primary); background: #e0e7ff; transform: translateY(-2px); }
+        .upload-box p { font-weight: 600; color: var(--primary); margin-top: 15px; font-size: 1.1em; }
+
+        .mini-upload-btn { 
+            display: none; background: #f0fdf4; border: 1px dashed var(--success); color: var(--success); 
+            padding: 15px; width: 100%; text-align: center; border-radius: 12px; 
+            cursor: pointer; margin-bottom: 20px; font-weight: 700; transition: 0.2s; 
+        }
+        .mini-upload-btn:hover { background: #dcfce7; }
+
+        /* GRID ẢNH & CONTROLS */
+        .controls { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; margin-bottom: 20px; }
+        .file-count { font-weight: 600; color: var(--text-sub); font-size: 0.9em; }
+        .clear-btn { background: #fee2e2; color: var(--danger); border: none; padding: 8px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; display: none; transition: 0.2s; }
+        .clear-btn:hover { background: #fecaca; }
+
+        #previewList { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 15px; max-height: 400px; overflow-y: auto; padding: 5px; }
+        .img-card { 
+            position: relative; z-index: 10; border-radius: 12px; overflow: hidden; aspect-ratio: 3/4; 
+            cursor: grab; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid var(--border); transition: 0.2s; background: white;
+        }
+        .img-card:hover { transform: translateY(-3px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); z-index: 5; }
+        .img-card img { width: 100%; height: 100%; object-fit: cover; }
+        .zoom-modal { z-index: 9999 !important; }
+        .card-actions { position: absolute; top: 5px; right: 5px; display: flex; gap: 5px; }
+        .icon-btn { width: 28px; height: 28px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: white; transition: 0.2s; opacity: 0.9; }
+        .icon-btn:hover { transform: scale(1.15); opacity: 1; }
+        .btn-zoom { background: var(--success); }
+        .btn-del { background: var(--danger); }
+        .page-badge { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.7); color: white; padding: 2px 8px; border-radius: 6px; font-size: 10px; font-weight: bold; pointer-events: none; }
+
+        /* NÚT XỬ LÝ */
+        .process-area { margin-top: 30px; display: flex; flex-direction: column; gap: 15px; }
+        .btn-main { 
+            padding: 18px; border: none; border-radius: 14px; font-size: 16px; font-weight: 700; 
+            cursor: pointer; width: 100%; color: white; display: flex; align-items: center; 
+            justify-content: center; gap: 10px; transition: 0.3s; box-shadow: 0 4px 6px rgba(79, 70, 229, 0.2);
+        }
+        .btn-convert { background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%); }
+        .btn-convert:hover { transform: translateY(-2px); box-shadow: 0 10px 15px rgba(79, 70, 229, 0.3); }
+        
+        .btn-solve { background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%); display: none; box-shadow: 0 4px 6px rgba(245, 158, 11, 0.2); }
+        .btn-solve:hover { transform: translateY(-2px); box-shadow: 0 10px 15px rgba(245, 158, 11, 0.3); }
+        
+        .btn-main:disabled { opacity: 0.6; cursor: not-allowed; transform: none; box-shadow: none; filter: grayscale(100%); }
+        .progress-bar { height: 6px; background: #e5e7eb; border-radius: 99px; overflow: hidden; display: none; margin-top: 15px; }
+        .progress-fill { height: 100%; background: var(--success); width: 0%; transition: width 0.3s ease; border-radius: 99px; }
+
+        /* KẾT QUẢ & COPY */
+        .result-section { padding: 40px; background: #f9fafb; border-top: 1px solid var(--border); display: none; animation: slideUp 0.4s ease; }
+        @keyframes slideUp { from {opacity:0; transform:translateY(20px);} to {opacity:1; transform:translateY(0);} }
+        .code-block { background: white; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); overflow: hidden; }
+        .code-header { padding: 12px 20px; background: #f3f4f6; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .header-title { font-weight: 700; font-size: 0.95em; display: flex; align-items: center; gap: 8px; }
+        .copy-btn { background: white; border: 1px solid var(--border); color: var(--text-main); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em; font-weight: 600; display: flex; align-items: center; gap: 6px; transition: 0.2s; }
+        .copy-btn:hover { background: #f9fafb; border-color: var(--primary); color: var(--primary); }
+        textarea { width: 100%; height: 180px; padding: 20px; border: none; resize: vertical; font-family: 'Consolas', monospace; font-size: 13px; line-height: 1.6; color: #374151; outline: none; box-sizing: border-box; }
+
+        /* BUTTONS OVERLEAF */
+        .export-group { display: flex; gap: 20px; margin-top: 10px; }
+        .btn-export { flex: 1; padding: 15px; border: none; border-radius: 12px; font-weight: 700; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; transition: 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .exp-question { background: #0f766e; } .exp-question:hover { background: #0d9488; transform: translateY(-2px); }
+        .exp-answer { background: #c2410c; } .exp-answer:hover { background: #ea580c; transform: translateY(-2px); }
+
+        /* FLOATING BULB & MODALS */
+        .bulb-btn { position: fixed; bottom: 30px; right: 30px; width: 60px; height: 60px; background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%); border-radius: 50%; box-shadow: 0 10px 25px rgba(245, 158, 11, 0.4); display: flex; align-items: center; justify-content: center; font-size: 24px; color: white; cursor: pointer; z-index: 900; transition: 0.3s; border: none; animation: float 3s ease-in-out infinite; }
+        .bulb-btn:hover { transform: scale(1.1); }
+        @keyframes float { 0%, 100% {transform: translateY(0);} 50% {transform: translateY(-10px);} }
+
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
+        .modal-box { background: white; width: 90%; max-width: 600px; padding: 30px; border-radius: 20px; position: relative; animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        @keyframes popIn { from {opacity:0; transform:scale(0.9);} to {opacity:1; transform:scale(1);} }
+        .close-modal { position: absolute; top: 20px; right: 20px; background: #f3f4f6; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-sub); font-size: 18px; transition: 0.2s; }
+        .close-modal:hover { background: #e5e7eb; color: var(--danger); }
+
+        .zoom-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 2000; justify-content: center; align-items: center; flex-direction: column; }
+        .zoom-modal img { max-width: 90%; max-height: 85vh; border-radius: 5px; box-shadow: 0 0 30px rgba(0,0,0,0.5); }
+        .zoom-close { margin-top: 20px; padding: 10px 30px; background: white; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; }
+
+        .quota-box { max-width: 400px; text-align: center; border-top: 6px solid var(--warning); }
+        .timer-circle { width: 90px; height: 90px; border-radius: 50%; border: 5px solid var(--warning); display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 800; color: var(--warning); margin: 25px auto; }
+        
+        .bulb-tips li { margin-bottom: 12px; padding: 10px; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; cursor: copy; font-family: monospace; font-size: 0.9em; color: #92400e; transition: 0.2s; }
+        .bulb-tips li:hover { background: #fef3c7; transform: translateX(5px); }
+    </style>
+</head>
+<body>
+
+    <div id="quotaModal" class="modal-overlay">
+        <div class="modal-box quota-box">
+            <h2 style="color: var(--warning); margin: 0;">⚠️ Hệ thống đang bận</h2>
+            <p style="margin-top: 10px; color: var(--text-sub);">Đang tự động đổi chìa khóa AI dự phòng...</p>
+            <div class="timer-circle" id="quotaTimer">60</div>
+        </div>
+    </div>
+
+    <div id="bulbModal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="close-modal" onclick="toggleModal('bulbModal', false)">&times;</div>
+            <h2 style="color: var(--warning); margin-top:0;"><i class="fas fa-lightbulb"></i> Mẹo nhỏ </h2>
+            <p>Nếu chưa ưng ý, bạn có thể bấm vào dòng lệnh bên dưới để copy, sau đó gửi cho AI để sửa code đã xuất:</p>
+            <ul class="bulb-tips" style="list-style: none; padding: 0;">
+                <li onclick="copyText(this.innerText)">Bảng này bị lệch, hãy căn giữa và thêm kẻ khung đầy đủ.</li>
+                <li onclick="copyText(this.innerText)">Hình vẽ này bị nhỏ quá, hãy vẽ to gấp đôi (scale=2).</li>
+                <li onclick="copyText(this.innerText)">Chuyển font chữ công thức toán về dạng chuẩn Times New Roman.</li>
+                <li onclick="copyText(this.innerText)">Kiểm tra lại đáp án trắc nghiệm xem có đúng logic không.</li>
+            </ul>
+        </div>
+    </div>
+
+    <div id="guideModal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="close-modal" onclick="toggleModal('guideModal', false)">&times;</div>
+            <h2 style="color: var(--primary); margin-top: 0;">📖 Hướng dẫn sử dụng</h2>
+            <div style="margin-top: 20px; line-height: 1.8;">
+                <p>1. <strong>Chọn ảnh:</strong> Tải ảnh bài tập (JPG/PNG).</p>
+                <p>2. <strong>Chuyển đổi:</strong> Bấm nút <b>Xanh dương</b> để lấy Đề bài.</p>
+                <p>3. <strong>Giải bài:</strong> Bấm nút <b>Vàng</b> nếu cần lời giải.</p>
+                <p>4. <strong>Xuất PDF:</strong> Bấm nút Xanh/Cam để mở Overleaf.</p>
+            </div>
+            <button class="btn-main btn-convert" style="margin-top: 20px;" onclick="toggleModal('guideModal', false)">Đã hiểu</button>
+        </div>
+    </div>
+
+    <div class="container">
+      <div class="header">
+            <div>
+                <div class="brand"><i class="fas fa-magic"></i> AI LaTeX Studio</div>
+                <p style="margin: 5px 0 0 0; font-size: 0.9em; color: #4b5563; font-weight: 500;">
+                    ✨ Công cụ chuyển đổi ảnh bài tập sang LaTeX & Giải chi tiết bằng AI
+                </p>
+            </div>
+            <button class="help-pill" onclick="toggleModal('guideModal', true)">
+                <i class="far fa-question-circle"></i> Hướng dẫn
+            </button>
+        </div>
+
+        <div class="upload-section">
+            <input type="file" id="fileInput" multiple accept=".jpg, .jpeg, .png" hidden onchange="handleFiles(this.files)">
+            
+            <div id="bigUploadBox" class="upload-box" onclick="document.getElementById('fileInput').click()">
+                <i class="fas fa-cloud-upload-alt fa-3x" style="color: #818cf8; margin-bottom: 15px;"></i>
+                <p>Bấm để chọn ảnh hoặc Kéo thả vào đây</p>
+                <small>Hỗ trợ JPG, PNG (Tối ưu cho Toán, Lý, Hóa)</small>
+            </div>
+
+            <div id="miniUploadBtn" class="mini-upload-btn" onclick="document.getElementById('fileInput').click()">
+                <i class="fas fa-plus-circle"></i> Thêm ảnh khác
+            </div>
+
+            <div class="controls">
+                <span id="fileCount" class="file-count"></span>
+                <button class="clear-btn" id="clearBtn" onclick="clearAllFiles()">
+                    <i class="fas fa-trash-alt"></i> Xóa tất cả
+                </button>
+            </div>
+
+            <div id="previewList"></div>
+
+            <div class="process-area">
+                <button id="btnConvert" class="btn-main btn-convert" onclick="processData(this, '/convert_questions', 'questionCode')" disabled>
+                    <i class="fas fa-bolt"></i> CHUYỂN ĐỔI ẢNH
+                </button>
+
+                <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
+
+                <button id="btnSolve" class="btn-main btn-solve" onclick="processData(this, '/solve_problems', 'answerCode')">
+                    <i class="fas fa-brain"></i> TẠO LỜI GIẢI CHI TIẾT
+                </button>
+            </div>
+        </div>
+
+        <div class="result-section" id="resultSection">
+            <div class="code-block">
+                <div class="code-header">
+                    <div class="header-title"><i class="fas fa-file-code" style="color: var(--primary)"></i> 1. Code Đề Bài</div>
+                    <button class="copy-btn" onclick="copyCode('questionCode', this)">Copy Code</button>
+                </div>
+                <textarea id="questionCode" spellcheck="false"></textarea>
+            </div>
+
+            <div class="code-block">
+                <div class="code-header">
+                    <div class="header-title"><i class="fas fa-pen-nib" style="color: var(--warning)"></i> 2. Code Lời Giải</div>
+                    <button class="copy-btn" onclick="copyCode('answerCode', this)">Copy Code</button>
+                </div>
+                <textarea id="answerCode" spellcheck="false" placeholder="Bấm nút màu vàng để AI giải bài..."></textarea>
+            </div>
+
+            <form action="https://www.overleaf.com/docs" method="post" target="_blank" id="overleafForm">
+                <input type="hidden" name="snip" id="overleafSnip">
+                <div class="export-group">
+                    <button type="button" class="btn-export exp-question" onclick="sendToOverleaf('QUESTION')">
+                        <i class="fas fa-file-pdf"></i> Xuất Đề Thi (Overleaf)
+                    </button>
+                    <button type="button" class="btn-export exp-answer" onclick="sendToOverleaf('ANSWER')">
+                        <i class="fas fa-file-signature"></i> Xuất Lời Giải (Overleaf)
+                    </button>
+                </div>
+            </form>
+
+            <div class="overleaf-guide" style="margin-top: 30px; padding: 25px; background: #ecfdf5; border: 1px solid #bbf7d0; border-radius: 12px;">
+                <h3 style="color: #047857; margin-top: 0; display: flex; align-items: center; gap: 10px;">
+                    <i class="fas fa-lightbulb"></i> Cách lấy file PDF từ Overleaf
+                </h3>
+                <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 15px;">
+                    <div style="flex: 1; min-width: 200px; background: white; padding: 15px; border-radius: 10px; border: 1px solid #d1fae5;">
+                        <span style="background: #059669; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold;">BƯỚC 1</span>
+                        <p style="margin: 8px 0 0; color: #374151;">Bấm nút xanh lá <b>Recompile</b> để chạy code.</p>
+                    </div>
+                    <div style="flex: 1; min-width: 200px; background: white; padding: 15px; border-radius: 10px; border: 1px solid #d1fae5;">
+                        <span style="background: #059669; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold;">BƯỚC 2</span>
+                        <p style="margin: 8px 0 0; color: #374151;">Bấm biểu tượng <b>Download</b> ngay cạnh đó để tải PDF.</p>
+            </div>
+        </div>
+    </div>
+
+    <button class="bulb-btn" onclick="toggleModal('bulbModal', true)" title="Mẹo chỉnh sửa AI">
+        <i class="fas fa-lightbulb"></i>
+    </button>
+
+    <div class="zoom-modal" id="zoomModal" onclick="this.style.display='none'">
+        <img id="zoomImg">
+        <button class="zoom-close">Đóng (Esc)</button>
+    </div>
+
+    <script>
+        const API_BASE = '';
+        let selectedFiles = [];
+
+        window.onload = () => {
+            if(!localStorage.getItem('v9_intro')) {
+                toggleModal('guideModal', true);
+                localStorage.setItem('v9_intro', 'true');
+            }
+        }
+
+        function toggleModal(id, show) {
+            document.getElementById(id).style.display = show ? 'flex' : 'none';
+        }
+
+        function handleFiles(files) {
+            Array.from(files).forEach(file => {
+                selectedFiles.push(file);
+                const url = URL.createObjectURL(file);
+                const div = document.createElement('div');
+                div.className = 'img-card';
+                div.fileObj = file; 
+                div.innerHTML = `
+                    <img src="${url}" onclick="openZoom('${url}')">
+                    <div class="card-actions">
+                        <button class="icon-btn btn-zoom" onclick="openZoom('${url}')"><i class="fas fa-search-plus"></i></button>
+                        <button class="icon-btn btn-del" onclick="removeFile(this)"><i class="fas fa-trash-alt"></i></button>
+                    </div>
+                    <div class="page-badge">Trang ?</div>
+                `;
+                document.getElementById('previewList').appendChild(div);
+            });
+            document.getElementById('fileInput').value = ''; 
+            updateUI();
+        }
+
+        function removeFile(btn) {
+            btn.closest('.img-card').remove();
+            updateUI();
+        }
+
+        function clearAllFiles() {
+            if(confirm('Bạn muốn xóa tất cả ảnh?')) {
+                document.getElementById('previewList').innerHTML = '';
+                updateUI();
+                document.getElementById('resultSection').style.display = 'none';
+            }
+        }
+
+        function updateUI() {
+            const cards = document.querySelectorAll('.img-card');
+            cards.forEach((card, index) => card.querySelector('.page-badge').innerText = `Trang ${index + 1}`);
+            
+            const hasFiles = cards.length > 0;
+            document.getElementById('bigUploadBox').style.display = hasFiles ? 'none' : 'block';
+            document.getElementById('miniUploadBtn').style.display = hasFiles ? 'block' : 'none';
+            document.getElementById('btnConvert').disabled = !hasFiles;
+            document.getElementById('fileCount').innerText = hasFiles ? `${cards.length} ảnh đã chọn` : '';
+            document.getElementById('clearBtn').style.display = hasFiles ? 'flex' : 'none';
+        }
+
+        new Sortable(document.getElementById('previewList'), { animation: 150, onEnd: updateUI });
+
+        function openZoom(url) {
+            document.getElementById('zoomImg').src = url;
+            document.getElementById('zoomModal').style.display = 'flex';
+        }
+
+        async function copyCode(elementId, btn) {
+            const text = document.getElementById(elementId).value;
+            if (!text) return;
+            try {
+                await navigator.clipboard.writeText(text);
+                const originalHtml = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-check"></i> Đã Copy!';
+                btn.style.borderColor = 'var(--success)';
+                btn.style.color = 'var(--success)';
+                setTimeout(() => {
+                    btn.innerHTML = originalHtml;
+                    btn.style.borderColor = '';
+                    btn.style.color = '';
+                }, 2000);
+            } catch (err) { alert('Lỗi copy: ' + err); }
+        }
+        
+        function copyText(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Đã copy: "' + text + '"');
+            });
+        }
+
+        async function processData(btn, endpoint, outputId) {
+            const cards = document.querySelectorAll('.img-card');
+            const originalText = btn.innerHTML;
+            const progressBar = document.getElementById('progressFill');
+
+            if (cards.length === 0) return;
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang xử lý...';
+            document.getElementById('progressBar').style.display = 'block';
+            progressBar.style.width = '30%';
+
+            const formData = new FormData();
+            cards.forEach(card => formData.append('file', card.fileObj));
+
+            try {
+                let w = 30;
+                const timer = setInterval(() => { if(w<90) progressBar.style.width = (++w) + '%' }, 100);
+
+                const response = await fetch(`${API_BASE}${endpoint}`, {
+                    method: 'POST', body: formData
+                });
+
+                const data = await response.json();
+                clearInterval(timer);
+                progressBar.style.width = '100%';
+
+                if (data.error && (data.error.includes("429") || data.error.includes("Quota"))) {
+                    startQuotaCountdown(60); 
+                    throw new Error("Hệ thống đang đổi key. Vui lòng đợi.");
+                }
+
+                if (data.error) throw new Error(data.error);
+
+                if (data.question_latex) {
+                    document.getElementById('questionCode').value = data.question_latex;
+                    document.getElementById('btnSolve').style.display = 'flex';
+                }
+                if (data.answer_latex) {
+                    document.getElementById('answerCode').value = data.answer_latex;
+                }
+
+                document.getElementById('resultSection').style.display = 'block';
+                document.getElementById('resultSection').scrollIntoView({behavior: 'smooth'});
+
+            } catch (error) {
+                if (!error.message.includes("đổi key")) alert("Lỗi: " + error.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                setTimeout(() => { 
+                    document.getElementById('progressBar').style.display = 'none'; 
+                    progressBar.style.width = '0%';
+                }, 1000);
+            }
+        }
+
+        function startQuotaCountdown(seconds) {
+            const timerDisplay = document.getElementById('quotaTimer');
+            let timeLeft = seconds;
+            toggleModal('quotaModal', true);
+            const interval = setInterval(() => {
+                timeLeft--;
+                timerDisplay.innerText = timeLeft;
+                if (timeLeft <= 0) {
+                    clearInterval(interval);
+                    toggleModal('quotaModal', false);
+                }
+            }, 1000);
+        }
+
+        function sendToOverleaf(mode) {
+            const q = document.getElementById('questionCode').value;
+            const a = document.getElementById('answerCode').value;
+            
+            let contentBody = "";
+            let title = "";
+            
+            if (mode === 'QUESTION') {
+                title = "ĐỀ BÀI KIỂM TRA";
+                contentBody = `\\section*{PHẦN 1: ĐỀ BÀI}\n${q}`;
+            } else {
+                title = "HƯỚNG DẪN GIẢI CHI TIẾT";
+                if (!a || a.trim() === "") {
+                    contentBody = "% CHƯA CÓ LỜI GIẢI. VUI LÒNG BẤM NÚT 'TẠO LỜI GIẢI CHI TIẾT' TRƯỚC.";
+                } else {
+                    contentBody = `\\section*{PHẦN 2: LỜI GIẢI CHI TIẾT}\n${a}`;
+                }
+            }
+            
+            const content = `
+\\documentclass[12pt,a4paper]{article}
+\\usepackage[utf8]{inputenc}
+\\usepackage[vietnamese]{babel}
+\\usepackage{amsmath,amssymb,graphicx,geometry,color,enumitem}
+\\usepackage{booktabs, multirow, array, makecell}
+\\usepackage{tikz, pgfplots}
+\\usepackage{mathptmx} % FONT TIMES NEW ROMAN
+\\pgfplotsset{compat=1.18}
+\\usetikzlibrary{calc, angles, quotes, intersections, patterns} 
+
+\\geometry{left=2cm,right=2cm,top=2cm,bottom=2cm}
+\\setlength{\\parskip}{0.5em} 
+\\setlength{\\parindent}{0pt}
+\\setlist[enumerate,1]{label=\\textbf{\\Alph*.}, leftmargin=1.5cm, itemsep=5pt}
+
+\\title{${title}}
+\\date{\\today}
+
+\\begin{document}
+\\begin{center} \\textbf{\\Large ${title}} \\end{center}
+\\vspace{0.5cm}
+${contentBody}
+\\end{document}`;
+            
+            document.getElementById('overleafSnip').value = content; 
+            document.getElementById('overleafForm').submit();
+        }
+    </script>
+</body>
+</html>
