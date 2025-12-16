@@ -9,7 +9,8 @@ from flask_cors import CORS
 import google.generativeai as genai
 from dotenv import load_dotenv
 import json_repair
-
+import io
+from PIL import Image
 load_dotenv()
 
 # --- CẤU HÌNH KEY & THREADING ---
