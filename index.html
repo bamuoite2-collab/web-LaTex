@@ -309,37 +309,39 @@
             document.getElementById(id).style.display = show ? 'flex' : 'none';
         }
 
-     function handleFiles(files) {
-    Array.from(files).forEach(file => {
-        selectedFiles.push(file);
-        const url = URL.createObjectURL(file);
-        const div = document.createElement('div');
-        div.className = 'img-card';
-        div.fileObj = file; 
-        
-        div.innerHTML = `
-            <img src="${url}">
-            <div class="card-actions">
-                <button class="icon-btn btn-zoom"><i class="fas fa-search-plus"></i></button>
-                <button class="icon-btn btn-del" onclick="removeFile(this)"><i class="fas fa-trash-alt"></i></button>
-            </div>
-            <div class="page-badge">Trang ?</div>
-        `;
-        
-        // Gán sự kiện click: Click ảnh để zoom, click nút zoom để zoom
-        div.querySelector('img').onclick = () => openZoom(url);
-        div.querySelector('.btn-zoom').onclick = () => openZoom(url);
+function handleFiles(files) {
+        Array.from(files).forEach(file => {
+            selectedFiles.push(file);
+            const url = URL.createObjectURL(file);
+            const div = document.createElement('div');
+            div.className = 'img-card';
+            div.fileObj = file; 
+            
+            // SỬA LỖI Ở ĐÂY:
+            // 1. Thêm type="button" cho các nút để tránh lỗi form.
+            // 2. Chuyển sự kiện onclick vào thẳng HTML để đảm bảo nhận lệnh chính xác.
+            div.innerHTML = `
+                <img src="${url}" onclick="openZoom('${url}')">
+                <div class="card-actions">
+                    <button type="button" class="icon-btn btn-zoom" onclick="openZoom('${url}')">
+                        <i class="fas fa-search-plus"></i>
+                    </button>
+                    <button type="button" class="icon-btn btn-del" onclick="removeFile(this)">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </div>
+                <div class="page-badge">Trang ?</div>
+            `;
+            
+            // Đã xóa 2 dòng querySelector cũ gây lỗi
+            // div.querySelector('img').onclick ... (Xóa)
+            // div.querySelector('.btn-zoom').onclick ... (Xóa)
 
-        document.getElementById('previewList').appendChild(div);
-    });
-    document.getElementById('fileInput').value = ''; 
-    updateUI();
-}
-
-        function removeFile(btn) {
-            btn.closest('.img-card').remove();
-            updateUI();
-        }
+            document.getElementById('previewList').appendChild(div);
+        });
+        document.getElementById('fileInput').value = ''; 
+        updateUI();
+    }
 
         function clearAllFiles() {
             if(confirm('Bạn muốn xóa tất cả ảnh?')) {
