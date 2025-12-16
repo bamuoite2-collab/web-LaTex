@@ -46,7 +46,27 @@ def serve_image():
     # Giúp web tải được ảnh nền Doraemon
     return send_file('images.png')
 # --------------------------------------------------------
-
+# --- HÀM NÉN ẢNH (TỐI ƯU TỐC ĐỘ) ---
+def compress_image(file_storage):
+    """Nén ảnh xuống kích thước tối đa 1024px để gửi đi nhanh hơn"""
+    try:
+        img = Image.open(file_storage)
+        # Chuyển về RGB nếu là ảnh PNG trong suốt
+        if img.mode in ('RGBA', 'P'): img = img.convert('RGB')
+        
+        # Resize nếu ảnh quá to (>1024px)
+        max_size = 1024
+        if max(img.size) > max_size:
+            img.thumbnail((max_size, max_size))
+        
+        # Lưu vào bộ nhớ đệm
+        img_byte_arr = io.BytesIO()
+        img.save(img_byte_arr, format='JPEG', quality=85) # Nén chất lượng 85%
+        return img_byte_arr.getvalue()
+    except Exception as e:
+        print(f"⚠️ Lỗi nén ảnh: {e}, dùng ảnh gốc.")
+        file_storage.seek(0)
+        return file_storage.read()
 # --- PROMPT OCR (GIỮ NGUYÊN) ---
 PROMPT_QUESTION = r"""
 Bạn là chuyên gia LaTeX và Xử lý dữ liệu. Nhiệm vụ: Chuyển đổi chính xác hình ảnh thành code LaTeX.
@@ -91,12 +111,30 @@ QUY TẮC SỐNG CÒN:
 """
 
 PROMPT_SOLVER = r"""
-Bạn là Giáo viên giỏi của Việt Nam. Giải chi tiết đề bài.
 
-QUY TẮC BẤT DI BẤT DỊCH:
+Bạn là một trợ lý chuyên giải bài tập Vật lý và Hóa học, là Giáo viên giỏi của Việt Nam. Nhiệm vụ của bạn là giải chính xác và xuất ra lời giải dưới định dạng LaTeX chuẩn, đẹp và chuyên nghiệp.
+
+TUÂN THỦ NGHIÊM NGẶT CÁC QUY TẮC SAU:
+
+
 1. NGÔN NGỮ: 100% Tiếng Việt. KHÔNG chèn tiếng Anh.
 2. ĐỊNH DẠNG: \textbf{Câu 1:}, Công thức $...$. Kết luận \textbf{Chọn đáp án A.}
 3. HÌNH/BẢNG: Copy quy tắc resizebox/pgfplots từ phần OCR.
+4. QUY TẮC VỀ BIẾN SỐ VÀ CHỈ SỐ (QUAN TRỌNG NHẤT):
+   - Tuyệt đối KHÔNG viết trực tiếp chữ tiếng Việt hoặc văn bản trong môi trường toán học ($...$) mà không có bao bọc.
+   - Khi biến số có chỉ số dưới là văn bản (tên người, tên vật), BẮT BUỘC phải dùng lệnh \text{}.
+   - Ví dụ SAI: v_{Hoàng}, v_{TB}, m_{nước}
+   - Ví dụ ĐÚNG: v_{\text{Hoàng}}, v_{\text{TB}}, m_{\text{nước}}
+   - Đơn vị đo lường cũng phải dùng \text{}. Ví dụ: 2,5 \text{ m/s}.
+
+5. QUY TẮC CĂN LỀ VÀ TRÌNH BÀY:
+   - Với các phép tính có nhiều dòng hoặc so sánh, BẮT BUỘC sử dụng môi trường \begin{align*} ... \end{align*} để căn thẳng hàng các dấu bằng (=) hoặc dấu so sánh.
+   - Không lạm dụng gạch đầu dòng (itemize) cho các đoạn văn phân tích dài. Hãy viết thành đoạn văn (paragraph) và xuống dòng hợp lý.
+   - Thêm khoảng cách giữa các phần bằng lệnh \vspace{0.5em} hoặc xuống dòng đơn giản để lời giải thoáng mắt.
+
+6. ĐỊNH DẠNG SỐ:
+   - Sử dụng dấu phẩy (,) cho số thập phân theo chuẩn Việt Nam (ví dụ: 2,5 thay vì 2.5).
+
 4. JSON: {"answer_latex": "Nội dung lời giải..."}
 """
 
@@ -108,13 +146,11 @@ def process_with_retry(files, prompt, retry_count=0):
     try:
         gemini_inputs = [prompt]
         for file in files:
-            file.seek(0)
-            gemini_inputs.append({
-                "mime_type": getattr(file, 'content_type', 'image/jpeg'),
-                "data": file.read()
-            })
+            processed_data = compress_image(file)
+            gemini_inputs.append({"mime_type": "image/jpeg", "data": processed_data})
+        
 
-        # 👇 3. SỬA TÊN MODEL VỀ BẢN CHUẨN (2.0)
+        # 👇 3. SỬA TÊN MODEL VỀ BẢN CHUẨN (2.5)
         model = genai.GenerativeModel(
             model_name="gemini-2.5-flash", 
             generation_config={"response_mime_type": "application/json"}
