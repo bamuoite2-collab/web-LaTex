@@ -52,7 +52,12 @@ PROMPT_QUESTION = r"""
 Bạn là chuyên gia LaTeX và Xử lý dữ liệu. Nhiệm vụ: Chuyển đổi chính xác hình ảnh thành code LaTeX.
 
 QUY TẮC SỐNG CÒN:
-1. NỘI DUNG: CHỈ trả về nội dung (Body). BỎ QUA \documentclass.
+1. NỘI DUNG: 
+- CHỈ trả về nội dung (Body). BỎ QUA \documentclass.
+- CHỈ trả về nội dung cốt lõi (phần nằm giữa \begin{document} và \end{document}).
+- TUYỆT ĐỐI KHÔNG bao gồm \documentclass, \usepackage.
+- TUYỆT ĐỐI KHÔNG liệt kê tên các gói (như amsmath, tikz, graphicx...).
+- Bắt đầu ngay bằng: \textbf{Câu...}
 
 2. LOGIC TẠO BẢNG (TABLE) - PHẢI TUÂN THỦ 4 BƯỚC:
    - BƯỚC 1 (QUAN SÁT): Đếm chính xác số lượng cột dọc trong ảnh.
