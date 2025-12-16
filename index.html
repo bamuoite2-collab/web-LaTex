@@ -7,17 +7,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
-    <script>
-      MathJax = {
-        tex: {
-          inlineMath: [['$', '$'], ['\\(', '\\)']],
-          displayMath: [['$$', '$$'], ['\\[', '\\]']],
-          processEscapes: true,
-        },
-        svg: { fontCache: 'global' }
-      };
-    </script>
-    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         :root {
             --primary: #4f46e5;
@@ -247,13 +236,6 @@
                 </div>
                 <textarea id="answerCode" spellcheck="false" placeholder="Bấm nút màu vàng để AI giải bài..."></textarea>
             </div>
-            
-            <div class="code-block">
-                <div class="code-header">
-                    <div class="header-title"><i class="fas fa-eye" style="color: var(--success)"></i> Xem trước kết quả</div>
-                </div>
-                <div id="mathPreview" style="padding: 20px; background: white; min-height: 100px; overflow-x: auto;"></div>
-            </div>
 
             <form action="https://www.overleaf.com/docs" method="post" target="_blank" id="overleafForm">
                 <input type="hidden" name="snip" id="overleafSnip">
@@ -309,45 +291,48 @@
             document.getElementById(id).style.display = show ? 'flex' : 'none';
         }
 
-function handleFiles(files) {
-        Array.from(files).forEach(file => {
-            selectedFiles.push(file);
-            const url = URL.createObjectURL(file);
-            const div = document.createElement('div');
-            div.className = 'img-card';
-            div.fileObj = file; 
-            
-            // SỬA LỖI Ở ĐÂY:
-            // 1. Thêm type="button" cho các nút để tránh lỗi form.
-            // 2. Chuyển sự kiện onclick vào thẳng HTML để đảm bảo nhận lệnh chính xác.
-            div.innerHTML = `
-                <img src="${url}" onclick="openZoom('${url}')">
-                <div class="card-actions">
-                    <button type="button" class="icon-btn btn-zoom" onclick="openZoom('${url}')">
-                        <i class="fas fa-search-plus"></i>
-                    </button>
-                    <button type="button" class="icon-btn btn-del" onclick="removeFile(this)">
-                        <i class="fas fa-trash-alt"></i>
-                    </button>
-                </div>
-                <div class="page-badge">Trang ?</div>
-            `;
-            
-            // Đã xóa 2 dòng querySelector cũ gây lỗi
-            // div.querySelector('img').onclick ... (Xóa)
-            // div.querySelector('.btn-zoom').onclick ... (Xóa)
-
-            document.getElementById('previewList').appendChild(div);
-        });
-        document.getElementById('fileInput').value = ''; 
-        updateUI();
-    }
+        function handleFiles(files) {
+            Array.from(files).forEach(file => {
+                selectedFiles.push(file);
+                const url = URL.createObjectURL(file);
+                const div = document.createElement('div');
+                div.className = 'img-card';
+                div.fileObj = file; 
+                
+                // Dùng event delegation cho zoom/xóa để đảm bảo hoạt động tốt sau khi sắp xếp
+                div.innerHTML = `
+                    <img src="${url}">
+                    <div class="card-actions">
+                        <button type="button" class="icon-btn btn-zoom">
+                            <i class="fas fa-search-plus"></i>
+                        </button>
+                        <button type="button" class="icon-btn btn-del">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </div>
+                    <div class="page-badge">Trang ?</div>
+                `;
+                
+                document.getElementById('previewList').appendChild(div);
+            });
+            document.getElementById('fileInput').value = ''; 
+            updateUI();
+        }
 
         function clearAllFiles() {
             if(confirm('Bạn muốn xóa tất cả ảnh?')) {
                 document.getElementById('previewList').innerHTML = '';
                 updateUI();
                 document.getElementById('resultSection').style.display = 'none';
+            }
+        }
+
+        function removeFile(target) {
+            // target có thể là button hoặc trực tiếp là thẻ .img-card
+            const card = target.closest ? target.closest('.img-card') : target;
+            if (card) {
+                card.remove();
+                updateUI();
             }
         }
 
@@ -363,7 +348,30 @@ function handleFiles(files) {
             document.getElementById('clearBtn').style.display = hasFiles ? 'flex' : 'none';
         }
 
-        new Sortable(document.getElementById('previewList'), { animation: 150, onEnd: updateUI });
+        const previewListEl = document.getElementById('previewList');
+
+        // Cho phép kéo thả sắp xếp ảnh
+        new Sortable(previewListEl, { animation: 150, onEnd: updateUI });
+
+        // Event delegation cho zoom và xóa, đảm bảo không bị mất sự kiện sau khi sắp xếp
+        previewListEl.addEventListener('click', (event) => {
+            const card = event.target.closest('.img-card');
+            if (!card) return;
+
+            // Xóa ảnh
+            if (event.target.closest('.btn-del')) {
+                removeFile(card);
+                return;
+            }
+
+            // Zoom ảnh khi bấm vào ảnh hoặc nút zoom
+            if (event.target.closest('.btn-zoom') || event.target.tagName === 'IMG') {
+                const imgEl = card.querySelector('img');
+                if (imgEl && imgEl.src) {
+                    openZoom(imgEl.src);
+                }
+            }
+        });
 
         function openZoom(url) {
             document.getElementById('zoomImg').src = url;
@@ -435,23 +443,6 @@ function handleFiles(files) {
                 if (data.answer_latex) {
                     document.getElementById('answerCode').value = data.answer_latex;
                 }
-
-                // --- XỬ LÝ PREVIEW THÔNG MINH (SỬA LỖI NULL Ở ĐÂY) ---
-                const previewBox = document.getElementById('mathPreview');
-                // Chỉ chạy nếu khung Preview có tồn tại
-                if (previewBox) {
-                    // Ưu tiên hiển thị đáp án, nếu chưa có đáp án thì hiện đề bài
-                    const contentToShow = data.answer_latex || data.question_latex;
-                    
-                    if (contentToShow) {
-                        previewBox.innerHTML = contentToShow;
-                        // Gọi MathJax vẽ lại
-                        if (window.MathJax) {
-                            MathJax.typesetPromise([previewBox]);
-                        }
-                    }
-                }
-                // -----------------------------------------------------
 
                 document.getElementById('resultSection').style.display = 'block';
                 document.getElementById('resultSection').scrollIntoView({behavior: 'smooth'});
