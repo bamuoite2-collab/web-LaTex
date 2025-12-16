@@ -1,144 +1,143 @@
-import streamlit as st
+import os
+import json
+import traceback
+import time
+import threading
+# 👇 1. THÊM send_file VÀO DÒNG NÀY
+from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS
 import google.generativeai as genai
-from PIL import Image
-import requests
+from dotenv import load_dotenv
+import json_repair
 
-# --- CẤU HÌNH TRANG WEB ---
-st.set_page_config(
-    page_title="Trợ Lý Soạn Đề Vật Lý",
-    page_icon="⚛️",
-    layout="wide"
-)
+load_dotenv()
 
-# --- CSS TÙY CHỈNH ---
-st.markdown("""
-<style>
-    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
-    .stTabs [data-baseweb="tab"] {
-        height: 50px;
-        white-space: pre-wrap;
-        background-color: #f0f2f6;
-        border-radius: 5px;
-        padding-top: 10px;
-        padding-bottom: 10px;
-    }
-    .stTabs [aria-selected="true"] {
-        background-color: #ff4b4b;
-        color: white;
-    }
-</style>
-""", unsafe_allow_html=True)
+# --- CẤU HÌNH KEY & THREADING ---
+keys_env = os.getenv("GEMINI_API_KEYS") or os.getenv("GEMINI_API_KEY")
+API_KEYS = [k.strip() for k in keys_env.split(',') if k.strip()] if keys_env else []
+current_key_index = 0
+key_lock = threading.Lock()
 
-# --- LẤY API KEY ---
-if "GOOGLE_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+if not API_KEYS:
+    print("❌ LỖI: Chưa cấu hình GEMINI_API_KEYS trong file .env")
 else:
-    st.error("⚠️ Chưa cấu hình API Key.")
-    st.stop()
+    print(f"🔥 Server đang chạy với {len(API_KEYS)} API Key.")
+    genai.configure(api_key=API_KEYS[0])
 
-# --- CẤU HÌNH AI ---
-# Dùng model mạnh nhất hiện có của bạn
-model = genai.GenerativeModel("gemini-2.5-flash", system_instruction="""
-Bạn là Trợ lý Giáo viên Vật lý & LaTeX chuyên nghiệp.
-Nhiệm vụ:
-1. Nhận ảnh đề thi -> Chuyển thành code LaTeX chuẩn (gói lệnh: inputenc, vietnamese babel, amsmath, geometry, tikz).
-2. Nếu người dùng yêu cầu "CÓ LỜI GIẢI":
-   - Hãy giải chi tiết từng câu hỏi ngay bên dưới.
-   - Trình bày lời giải đẹp, dùng môi trường enumerate hoặc itemize.
-   - QUAN TRỌNG: Phải tách riêng phần "Đề bài thuần túy" và phần "Lời giải" bằng dòng chữ chính xác là: <<<PHAN_CACH_LOI_GIAI>>>
-   - Phần đầu là code LaTeX của đề thi (để in đề).
-   - Phần sau là code LaTeX của lời giải (để in đáp án).
-3. Nếu KHÔNG yêu cầu lời giải: Chỉ trả về code LaTeX đề thi.
-4. Không viết lời dẫn thừa thãi.
-""")
+def rotate_key():
+    global current_key_index
+    if not API_KEYS: return
+    with key_lock:
+        current_key_index = (current_key_index + 1) % len(API_KEYS)
+        print(f"🔄 Đổi sang Key #{current_key_index + 1}")
+        genai.configure(api_key=API_KEYS[current_key_index])
 
-# Hàm làm sạch code
-def clean_latex_code(text):
-    text = text.replace("```latex", "").replace("```", "").strip()
-    return text
+app = Flask(__name__)
+CORS(app)
 
-# Hàm in PDF
-def convert_to_pdf(latex_code):
-    url = "https://latex.online/compile"
+# --- 👇 2. QUAN TRỌNG: THÊM ROUTE CHO TRANG CHỦ & ẢNH ---
+@app.route('/')
+def home():
+    # Khi vào trang chủ, trả về file giao diện
+    return send_file('index.html')
+
+@app.route('/images.png')
+def serve_image():
+    # Giúp web tải được ảnh nền Doraemon
+    return send_file('images.png')
+# --------------------------------------------------------
+
+# --- PROMPT OCR (GIỮ NGUYÊN) ---
+PROMPT_QUESTION = r"""
+Bạn là chuyên gia LaTeX và Xử lý dữ liệu. Nhiệm vụ: Chuyển đổi chính xác hình ảnh thành code LaTeX.
+
+QUY TẮC SỐNG CÒN:
+1. NỘI DUNG: CHỈ trả về nội dung (Body). BỎ QUA \documentclass.
+
+2. LOGIC TẠO BẢNG (TABLE) - PHẢI TUÂN THỦ 4 BƯỚC:
+   - BƯỚC 1 (QUAN SÁT): Đếm chính xác số lượng cột dọc trong ảnh.
+   - BƯỚC 2 (KHUNG): Khai báo số lượng cột trong \begin{tabular}{|...|} phải KHỚP.
+   - BƯỚC 3 (DỮ LIỆU): Điền dữ liệu từng hàng ngang.
+   - BƯỚC 4 (THẨM MỸ): Luôn bao quanh bảng bằng: \begin{center} \resizebox{0.75\linewidth}{!}{ ... } \end{center}
+
+3. ĐỊNH DẠNG VĂN BẢN:
+   - Câu hỏi: \textbf{Câu 1:} (In đậm).
+   - Trắc nghiệm: \begin{enumerate}[label=\textbf{\Alph*.}, leftmargin=1cm]
+
+4. HÌNH VẼ & ĐỒ THỊ (PGFPLOTS):
+   - BẮT BUỘC dùng môi trường `axis` với cấu hình sau:
+     \begin{center}
+     \begin{tikzpicture}
+     \begin{axis}[
+         axis lines = middle,
+         axis line style={->, >=stealth, thick},
+         xlabel = {$t$ (s)}, ylabel = {$x$ (m)},
+         xlabel style={at={(ticklabel* cs:1)}, anchor=west}, 
+         ylabel style={at={(ticklabel* cs:1)}, anchor=south},
+         grid = both, major grid style = {dashed, gray!30},
+         width = 8cm, height = 6cm,
+     ]
+     \addplot[thick, blue, mark=*] coordinates { ... };
+     \end{axis}
+     \end{tikzpicture}
+     \end{center}
+
+5. OUTPUT: Chỉ trả về JSON {"question_latex": "..."}
+"""
+
+PROMPT_SOLVER = r"""
+Bạn là Giáo viên giỏi của Việt Nam. Giải chi tiết đề bài.
+
+QUY TẮC BẤT DI BẤT DỊCH:
+1. NGÔN NGỮ: 100% Tiếng Việt. KHÔNG chèn tiếng Anh.
+2. ĐỊNH DẠNG: \textbf{Câu 1:}, Công thức $...$. Kết luận \textbf{Chọn đáp án A.}
+3. HÌNH/BẢNG: Copy quy tắc resizebox/pgfplots từ phần OCR.
+4. JSON: {"answer_latex": "Nội dung lời giải..."}
+"""
+
+def process_with_retry(files, prompt, retry_count=0):
+    if not API_KEYS: return jsonify({"error": "Chưa cấu hình API Key"}), 500
+    if retry_count >= len(API_KEYS):
+        return jsonify({"error": "429 Quota Exceeded. Hệ thống quá tải, vui lòng đợi 60 giây."}), 429
+
     try:
-        response = requests.post(url, data={'text': latex_code, 'command': 'pdflatex'}, timeout=60)
-        return response.content if response.status_code == 200 else None
-    except:
-        return None
+        gemini_inputs = [prompt]
+        for file in files:
+            file.seek(0)
+            gemini_inputs.append({
+                "mime_type": getattr(file, 'content_type', 'image/jpeg'),
+                "data": file.read()
+            })
 
-# --- GIAO DIỆN CHÍNH ---
-st.title("⚛️ Tool Soạn Đề & Giải Đề Tự Động")
-st.caption("Hỗ trợ giáo viên Vật lý - Powered by Gemini 2.5")
-st.markdown("---")
+        # 👇 3. SỬA TÊN MODEL VỀ BẢN CHUẨN (2.0)
+        model = genai.GenerativeModel(
+            model_name="gemini-2.5-flash", 
+            generation_config={"response_mime_type": "application/json"}
+        )
 
-col1, col2 = st.columns([1, 1.2])
-
-with col1:
-    st.subheader("1. Đầu vào")
-    uploaded_file = st.file_uploader("Tải ảnh đề thi lên", type=["jpg", "png", "jpeg"])
-    
-    # TÙY CHỌN MỚI
-    st.markdown("#### Tùy chọn xử lý:")
-    include_solution = st.toggle("✅ Kèm Lời Giải Chi Tiết", value=False, help="AI sẽ tự động giải đề thi này cho bạn")
-    
-    if uploaded_file:
-        image = Image.open(uploaded_file)
-        st.image(image, caption="Ảnh gốc", use_column_width=True)
-
-with col2:
-    st.subheader("2. Kết quả")
-    
-    if uploaded_file and st.button("🚀 BẮT ĐẦU XỬ LÝ", type="primary", use_container_width=True):
-        status = st.status("Đang phân tích đề bài...", expanded=True)
+        response = model.generate_content(gemini_inputs)
         
-        try:
-            # TẠO PROMPT DỰA TRÊN LỰA CHỌN
-            user_prompt = "Chuyển ảnh này thành LaTeX."
-            if include_solution:
-                user_prompt += " YÊU CẦU: Có kèm lời giải chi tiết và dùng dấu phân cách <<<PHAN_CACH_LOI_GIAI>>>."
-            
-            # GỌI GEMINI
-            response = model.generate_content([user_prompt, image])
-            full_text = clean_latex_code(response.text)
-            
-            # XỬ LÝ TÁCH ĐỀ VÀ GIẢI
-            if "<<<PHAN_CACH_LOI_GIAI>>>" in full_text:
-                parts = full_text.split("<<<PHAN_CACH_LOI_GIAI>>>")
-                question_code = parts[0].strip()
-                solution_code = parts[1].strip()
-                has_solution = True
-            else:
-                question_code = full_text
-                solution_code = ""
-                has_solution = False
-            
-            status.update(label="Đã xong! Đang hiển thị...", state="complete", expanded=False)
-            
-            # HIỂN THỊ DẠNG TAB (Rất tiện cho GV)
-            tab1, tab2 = st.tabs(["📄 ĐỀ THI (Học sinh)", "📝 ĐÁP ÁN (Giáo viên)"])
-            
-            with tab1:
-                st.info("Dưới đây là code đề thi (không có giải):")
-                st.code(question_code, language='latex')
-                # Nút in PDF Đề
-                if st.button("🖨️ Xuất PDF Đề Thi"):
-                    with st.spinner("Đang in PDF..."):
-                        pdf_data = convert_to_pdf(question_code)
-                        if pdf_data:
-                            st.download_button("📥 TẢI PDF ĐỀ", pdf_data, "De_thi.pdf", "application/pdf")
-                        else:
-                            st.error("Server in bận. Hãy copy code trên vào Overleaf.")
+        try: return jsonify(json.loads(response.text))
+        except: return jsonify(json_repair.loads(response.text))
 
-            with tab2:
-                if has_solution:
-                    st.success("AI đã giải xong! Dưới đây là code lời giải:")
-                    st.code(solution_code, language='latex')
-                    st.warning("⚠️ Lưu ý: Hãy kiểm tra lại các con số tính toán của AI trước khi dùng.")
-                else:
-                    if include_solution:
-                        st.warning("AI quên tách lời giải. Hãy kiểm tra lại code ở Tab 1.")
-                    else:
-                        st.info("Bạn chưa chọn chế độ giải đề. Hãy gạt nút bên trái rồi chạy lại.")
-                        
-        except Exception as e:
-            st.error(f"Lỗi: {e}")
+    except Exception as e:
+        err = str(e)
+        if "429" in err or "Quota" in err or "403" in err:
+            print("⚠️ Lỗi Quota. Đang đổi key...")
+            rotate_key()
+            time.sleep(1)
+            return process_with_retry(files, prompt, retry_count + 1)
+        
+        print("❌ Lỗi Server:", traceback.format_exc())
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/convert_questions', methods=['POST'])
+def convert_questions():
+    return process_with_retry(request.files.getlist('file'), PROMPT_QUESTION)
+
+@app.route('/solve_problems', methods=['POST'])
+def solve_problems():
+    return process_with_retry(request.files.getlist('file'), PROMPT_SOLVER)
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)
