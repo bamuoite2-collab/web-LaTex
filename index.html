@@ -163,7 +163,7 @@
             <div class="close-modal" onclick="toggleModal('guideModal', false)">&times;</div>
             <h2 style="color: var(--primary); margin-top: 0;">📖 Hướng dẫn sử dụng</h2>
             <div style="margin-top: 20px; line-height: 1.8;">
-                <p>1. <strong>Chọn ảnh:</strong> Tải ảnh bài tập (JPG/PNG).</p>
+                <p>1. <strong>Chọn ảnh:</strong> Tải ảnh bài tập (JPG/PNG) hoặc file PDF.</p>
                 <p>2. <strong>Chuyển đổi:</strong> Bấm nút <b>Xanh dương</b> để lấy Đề bài.</p>
                 <p>3. <strong>Giải bài:</strong> Bấm nút <b>Vàng</b> nếu cần lời giải.</p>
                 <p>4. <strong>Xuất PDF:</strong> Bấm nút Xanh/Cam để mở Overleaf.</p>
@@ -186,12 +186,12 @@
         </div>
 
         <div class="upload-section">
-            <input type="file" id="fileInput" multiple accept=".jpg, .jpeg, .png" hidden onchange="handleFiles(this.files)">
+            <input type="file" id="fileInput" multiple accept=".jpg, .jpeg, .png, .pdf" hidden onchange="handleFiles(this.files)">
             
             <div id="bigUploadBox" class="upload-box" onclick="document.getElementById('fileInput').click()">
                 <i class="fas fa-cloud-upload-alt fa-3x" style="color: #818cf8; margin-bottom: 15px;"></i>
                 <p>Bấm để chọn ảnh hoặc Kéo thả vào đây</p>
-                <small>Hỗ trợ JPG, PNG (Tối ưu cho Toán, Lý, Hóa)</small>
+                <small>Hỗ trợ JPG, PNG, PDF (Tối ưu cho Toán, Lý, Hóa)</small>
             </div>
 
             <div id="miniUploadBtn" class="mini-upload-btn" onclick="document.getElementById('fileInput').click()">
@@ -277,7 +277,8 @@
     </div>
 
     <script>
-        const API_BASE = '';
+        // Tự động detect API_BASE: nếu đang chạy từ file:// thì dùng localhost, ngược lại dùng rỗng (relative URL)
+        const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:5000' : '';
         let selectedFiles = [];
 
         window.onload = () => {
@@ -297,21 +298,37 @@
                 const url = URL.createObjectURL(file);
                 const div = document.createElement('div');
                 div.className = 'img-card';
-                div.fileObj = file; 
+                div.fileObj = file;
+                const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
                 
                 // Dùng event delegation cho zoom/xóa để đảm bảo hoạt động tốt sau khi sắp xếp
-                div.innerHTML = `
-                    <img src="${url}">
-                    <div class="card-actions">
-                        <button type="button" class="icon-btn btn-zoom">
-                            <i class="fas fa-search-plus"></i>
-                        </button>
-                        <button type="button" class="icon-btn btn-del">
-                            <i class="fas fa-trash-alt"></i>
-                        </button>
-                    </div>
-                    <div class="page-badge">Trang ?</div>
-                `;
+                if (isPDF) {
+                    div.innerHTML = `
+                        <div style="width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f3f4f6; color: #ef4444;">
+                            <i class="fas fa-file-pdf" style="font-size: 48px; margin-bottom: 8px;"></i>
+                            <div style="font-size: 11px; font-weight: 600; text-align: center; padding: 0 8px; word-break: break-word;">${file.name}</div>
+                        </div>
+                        <div class="card-actions">
+                            <button type="button" class="icon-btn btn-del">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </div>
+                        <div class="page-badge">Trang ?</div>
+                    `;
+                } else {
+                    div.innerHTML = `
+                        <img src="${url}">
+                        <div class="card-actions">
+                            <button type="button" class="icon-btn btn-zoom">
+                                <i class="fas fa-search-plus"></i>
+                            </button>
+                            <button type="button" class="icon-btn btn-del">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </div>
+                        <div class="page-badge">Trang ?</div>
+                    `;
+                }
                 
                 document.getElementById('previewList').appendChild(div);
             });
@@ -320,7 +337,7 @@
         }
 
         function clearAllFiles() {
-            if(confirm('Bạn muốn xóa tất cả ảnh?')) {
+            if(confirm('Bạn muốn xóa tất cả file?')) {
                 document.getElementById('previewList').innerHTML = '';
                 updateUI();
                 document.getElementById('resultSection').style.display = 'none';
@@ -378,11 +395,49 @@
             document.getElementById('zoomModal').style.display = 'flex';
         }
 
+        function generateFullLatex(bodyContent, title) {
+            return `\\documentclass[12pt,a4paper]{article}
+\\usepackage[utf8]{inputenc}
+\\usepackage[vietnamese]{babel}
+\\usepackage{amsmath,amssymb,graphicx,geometry,color,enumitem}
+\\usepackage{booktabs, multirow, array, makecell}
+\\usepackage{tikz, pgfplots, siunitx, mathtools}
+\\usepackage{mathptmx} % FONT TIMES NEW ROMAN
+\\pgfplotsset{compat=1.18}
+\\usetikzlibrary{calc, angles, quotes, intersections, patterns} 
+
+\\geometry{left=2cm,right=2cm,top=2cm,bottom=2cm}
+\\setlength{\\parskip}{0.5em} 
+\\setlength{\\parindent}{0pt}
+\\setlist[enumerate,1]{label=\\textbf{\\Alph*.}, leftmargin=1.5cm, itemsep=5pt}
+
+\\title{${title}}
+\\date{\\today}
+
+\\begin{document}
+\\begin{center} \\textbf{\\Large ${title}} \\end{center}
+\\vspace{0.5cm}
+${bodyContent}
+\\end{document}`;
+        }
+
         async function copyCode(elementId, btn) {
-            const text = document.getElementById(elementId).value;
-            if (!text) return;
+            const bodyContent = document.getElementById(elementId).value;
+            if (!bodyContent) return;
+            
+            let title;
+            if (elementId === 'questionCode') {
+                title = "ĐỀ BÀI KIỂM TRA";
+            } else if (elementId === 'answerCode') {
+                title = "HƯỚNG DẪN GIẢI CHI TIẾT";
+            } else {
+                title = "DOCUMENT";
+            }
+            
+            const fullLatex = generateFullLatex(bodyContent, title);
+            
             try {
-                await navigator.clipboard.writeText(text);
+                await navigator.clipboard.writeText(fullLatex);
                 const originalHtml = btn.innerHTML;
                 btn.innerHTML = '<i class="fas fa-check"></i> Đã Copy!';
                 btn.style.borderColor = 'var(--success)';
@@ -423,6 +478,11 @@
                 const response = await fetch(`${API_BASE}${endpoint}`, {
                     method: 'POST', body: formData
                 });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Lỗi ${response.status}: ${errorText}`);
+                }
 
                 const data = await response.json();
                 clearInterval(timer);
@@ -492,30 +552,7 @@
                 }
             }
             
-            const content = `
-\\documentclass[12pt,a4paper]{article}
-\\usepackage[utf8]{inputenc}
-\\usepackage[vietnamese]{babel}
-\\usepackage{amsmath,amssymb,graphicx,geometry,color,enumitem}
-\\usepackage{booktabs, multirow, array, makecell}
-\\usepackage{tikz, pgfplots}
-\\usepackage{mathptmx} % FONT TIMES NEW ROMAN
-\\pgfplotsset{compat=1.18}
-\\usetikzlibrary{calc, angles, quotes, intersections, patterns} 
-
-\\geometry{left=2cm,right=2cm,top=2cm,bottom=2cm}
-\\setlength{\\parskip}{0.5em} 
-\\setlength{\\parindent}{0pt}
-\\setlist[enumerate,1]{label=\\textbf{\\Alph*.}, leftmargin=1.5cm, itemsep=5pt}
-
-\\title{${title}}
-\\date{\\today}
-
-\\begin{document}
-\\begin{center} \\textbf{\\Large ${title}} \\end{center}
-\\vspace{0.5cm}
-${contentBody}
-\\end{document}`;
+            const content = generateFullLatex(contentBody, title);
             
             document.getElementById('overleafSnip').value = content; 
             document.getElementById('overleafForm').submit();

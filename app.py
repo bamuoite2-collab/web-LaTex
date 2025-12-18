@@ -89,6 +89,7 @@ QUY TẮC SỐNG CÒN:
 3. ĐỊNH DẠNG VĂN BẢN:
    - Câu hỏi: \textbf{Câu 1:} (In đậm).
    - Trắc nghiệm: \begin{enumerate}[label=\textbf{\Alph*.}, leftmargin=1cm]
+   - Khi cần tạo dòng kẻ chấm để học sinh điền câu trả lời (giống như trong các đề thi), BẮT BUỘC phải sử dụng cấu trúc: \noindent\makebox[\linewidth]{\dotfill} \\
 
 4. HÌNH VẼ & ĐỒ THỊ (PGFPLOTS):
    - BẮT BUỘC dùng môi trường `axis` với cấu hình sau:
@@ -136,7 +137,18 @@ TUÂN THỦ NGHIÊM NGẶT CÁC QUY TẮC SAU:
 6. ĐỊNH DẠNG SỐ:
    - Sử dụng dấu phẩy (,) cho số thập phân theo chuẩn Việt Nam (ví dụ: 2,5 thay vì 2.5).
 
-4. JSON: {"answer_latex": "Nội dung lời giải..."}
+7. Quy tắc đơn vị Vật lý (Units):
+
+   -Đơn vị đo lường (m, kg, s, m/s, Pa, N/m²,...) KHÔNG được để in nghiêng (không được để trực tiếp trong cặp dấu $...$).
+
+   - BẮT BUỘC bọc đơn vị trong lệnh \text{} khi nằm trong môi trường toán học.
+
+   - Ví dụ SAI: $10 m/s$, $v = 5 m/s^2$.
+
+   - Ví dụ ĐÚNG: $10 \text{ m/s}$, $v = 5 \text{ m/s}^2$, $0,06 \text{ m}^3$.
+
+   -Phải có một khoảng cách nhỏ giữa con số và đơn vị (ví dụ: 10 \text{ kg}).
+8 . JSON: {"answer_latex": "Nội dung lời giải..."}
 """
 
 def process_with_retry(files, prompt, retry_count=0):
@@ -147,8 +159,25 @@ def process_with_retry(files, prompt, retry_count=0):
     try:
         gemini_inputs = [prompt]
         for file in files:
-            processed_data = compress_image(file)
-            gemini_inputs.append({"mime_type": "image/jpeg", "data": processed_data})
+            try:
+                # Kiểm tra loại file (PDF hay ảnh) - ưu tiên kiểm tra filename
+                filename = file.filename or ''
+                is_pdf = filename.lower().endswith('.pdf')
+                
+                file.seek(0)  # Reset file pointer
+                if is_pdf:
+                    # Đọc dữ liệu nhị phân trực tiếp cho PDF
+                    pdf_data = file.read()
+                    if not pdf_data:
+                        raise ValueError(f"Không thể đọc file PDF: {filename}")
+                    gemini_inputs.append({"mime_type": "application/pdf", "data": pdf_data})
+                else:
+                    # Xử lý ảnh như cũ
+                    processed_data = compress_image(file)
+                    gemini_inputs.append({"mime_type": "image/jpeg", "data": processed_data})
+            except Exception as file_err:
+                print(f"⚠️ Lỗi xử lý file {file.filename}: {file_err}")
+                raise ValueError(f"Lỗi xử lý file {file.filename}: {str(file_err)}")
         
 
         # 👇 3. SỬA TÊN MODEL VỀ BẢN CHUẨN (2.5)
@@ -164,13 +193,19 @@ def process_with_retry(files, prompt, retry_count=0):
 
     except Exception as e:
         err = str(e)
+        print("❌ Lỗi trong process_with_retry:", traceback.format_exc())
         if "429" in err or "Quota" in err or "403" in err:
             print("⚠️ Lỗi Quota. Đang đổi key...")
             rotate_key()
             time.sleep(1)
+            # Reset file pointers trước khi retry
+            for file in files:
+                try:
+                    file.seek(0)
+                except:
+                    pass
             return process_with_retry(files, prompt, retry_count + 1)
         
-        print("❌ Lỗi Server:", traceback.format_exc())
         return jsonify({"error": str(e)}), 500
 
 @app.route('/convert_questions', methods=['POST'])
